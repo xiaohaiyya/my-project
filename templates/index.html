@@ -2,65 +2,66 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Flask 待办事项</title>
-    <!-- 引入Bootstrap（在线CDN，无需下载） -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>待办事项</title>
     <style>
-        .container {
+        /* 优化1：仅保留核心样式，删除所有冗余规则 */
+        body {
             max-width: 600px;
-            margin-top: 50px;
+            margin: 20px auto;
+            font-family: Arial, sans-serif;
+            padding: 0 10px;
         }
         .todo-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #eee;
         }
         .completed {
             text-decoration: line-through;
-            color: #6c757d;
+            color: #999;
+        }
+        input[type="text"] {
+            width: 70%;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 6px 12px;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .delete-btn {
+            margin-left: 10px;
+            background: #dc3545;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="text-center mb-4">我的待办事项</h1>
-
-        <!-- 添加待办的表单 -->
-        <form action="/add" method="POST" class="mb-4">
-            <div class="input-group">
-                <input type="text" name="title" class="form-control" placeholder="输入待办事项..." required>
-                <button class="btn btn-primary" type="submit">添加</button>
-            </div>
-        </form>
-
-        <!-- 待办事项列表 -->
-        <div class="todo-list">
-            {% if todos %}
-                {% for todo in todos %}
-                <div class="todo-item">
-                    <div>
-                        <!-- 点击复选框标记完成/未完成 -->
-                        <a href="/toggle/{{ todo.id }}">
-                            <input type="checkbox" {{ 'checked' if todo.completed else '' }}>
-                        </a>
-                        <span class="{{ 'completed' if todo.completed else '' }}">
-                            {{ todo.title }}
-                        </span>
-                        <small class="text-muted ms-2">{{ todo.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
-                    </div>
-                    <!-- 删除按钮 -->
-                    <a href="/delete/{{ todo.id }}" class="btn btn-sm btn-danger" onclick="return confirm('确定删除吗？')">删除</a>
-                </div>
-                {% endfor %}
-            {% else %}
-                <p class="text-center text-muted">暂无待办事项，添加一个吧！</p>
-            {% endif %}
+    <h1>我的待办</h1>
+    <!-- 优化2：form增加required，前端兜底，减少后端请求 -->
+    <form action="/add" method="POST">
+        <input type="text" name="title" placeholder="输入待办内容..." required>
+        <button type="submit">添加</button>
+    </form>
+    <div>
+        <!-- 优化3：删除时间渲染、复杂嵌套，仅保留核心交互 -->
+        {% for todo in todos %}
+        <div class="todo-item">
+            <a href="/toggle/{{ todo.id }}">
+                <input type="checkbox" {{ 'checked' if todo.completed else '' }}>
+            </a>
+            <span class="{{ 'completed' if todo.completed else '' }}" style="margin: 0 8px;">
+                {{ todo.title }}
+            </span>
+            <a href="/delete/{{ todo.id }}" class="delete-btn">删除</a>
         </div>
+        {% endfor %}
     </div>
-
-    <!-- 引入Bootstrap JS（可选，这里用不到） -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 优化4：删除所有远程JS，纯原生交互，无阻塞 -->
 </body>
 </html>

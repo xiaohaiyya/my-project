@@ -29,6 +29,8 @@ with app.app_context():
 def index():
     # 查询所有待办事项，按创建时间倒序排列
     todos = Todo.query.order_by(Todo.created_at.desc()).all()
+    # 主动关闭数据库会话
+    db.session.close()
     # 渲染模板，把待办数据传给前端
     return render_template('index.html', todos=todos)
 
