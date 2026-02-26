@@ -102,6 +102,26 @@ def delete_todo(todo_id):
         db.session.rollback()
         return jsonify({'code': 500, 'msg': f'删除失败：{str(e)}'})
 
+# 5. 编辑待办
+@app.route('/api/todos/<int:todo_id>/edit', methods=['PUT'])
+def edit_todo(todo_id):
+    try:
+        data = request.get_json()
+        title = data.get('title', '').strip()
+        if not title:
+            return jsonify({'code': 400, 'msg': '标题不能为空'})
+
+        todo = Todo.query.get(todo_id)
+        if not todo:
+            return jsonify({'code': 404, 'msg': '待办不存在'})
+
+        todo.title = title
+        db.session.commit()
+        return jsonify({'code': 200, 'msg': '编辑成功'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'code': 500, 'msg': f'编辑失败：{str(e)}'})
+
 
 # 运行后端
 if __name__ == '__main__':
