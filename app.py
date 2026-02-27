@@ -1,165 +1,146 @@
-# 导入核心依赖
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 import sqlite3
-import traceback
+from datetime import datetime
 
 # 初始化 Flask 应用
 app = Flask(__name__)
 
-# 配置跨域（开发/演示阶段允许所有域名，上线后可替换为你的 Vercel 前端域名）
-# 示例：CORS(app, resources={r"/*": {"origins": "https://your-react-app.vercel.app"}})
+# ========== 1. 跨域配置（适配 Render + 前端 Vercel） ==========
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ===================== 核心配置 =====================
-# SQLite 数据库路径（适配 Render 服务器的文件系统）
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(BASE_DIR, 'data.db')
+# ========== 2. SQLite 路径适配（Render 核心！仅 /tmp 目录可写） ==========
+if 'RENDER' in os.environ:
+    DB_FILE = '/tmp/todos.db'
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DB_FILE = os.path.join(BASE_DIR, 'todos.db')
 
-# ===================== 数据库工具函数 =====================
+
+# ========== 3. 数据库工具函数（不变） ==========
 def get_db_connection():
-    """获取数据库连接（封装成函数，方便复用）"""
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        # 设置行工厂，让查询结果以字典形式返回（更易用）
-        conn.row_factory = sqlite3.Row
-        return conn
-    except Exception as e:
-        app.logger.error(f"数据库连接失败: {str(e)}")
-        raise e
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-# 初始化数据库（确保表存在，首次部署自动创建）
+
 def init_database():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    # 示例：创建一个测试表（你可以替换成自己的业务表）
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE,
-            create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS todos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                completed BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        print("数据库初始化成功！")
+    except Exception as e:
+        print(f"数据库初始化失败：{str(e)}")
 
-# 启动时初始化数据库
+
 init_database()
 
-# ===================== 接口定义 =====================
-@app.route('/')
-def index():
-    """根路径测试"""
+
+# ========== 新增：Render 部署测试接口（核心！） ==========
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """健康检查接口，验证 Render 部署是否成功"""
     return jsonify({
         "code": 200,
-        "msg": "Flask 后端服务已启动（Render 部署成功）",
+        "msg": "Render 部署成功！后端服务正常运行",
         "data": {
-            "service": "flask-backend",
-            "database": "SQLite",
-            "status": "running"
+            "env": "Render 生产环境" if 'RENDER' in os.environ else "本地开发环境",
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "success"
         }
     })
 
-@app.route('/api/test', methods=['GET'])
-def test_connection():
-    """测试接口：验证数据库连接和服务可用性"""
+
+# ========== 4. 原有业务接口（完全不变） ==========
+# 获取所有待办
+@app.route('/api/todos', methods=['GET'])
+def get_todos():
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
-        # 测试查询
-        cursor.execute("SELECT 1")
-        result = cursor.fetchone()
+        todos = conn.execute('SELECT * FROM todos ORDER BY created_at DESC').fetchall()
         conn.close()
-
-        return jsonify({
-            "code": 200,
-            "msg": "后端部署成功！SQLite 数据库连接正常",
-            "data": {
-                "db_test": result[0],  # 应返回 1
-                "db_path": DB_FILE
-            }
-        })
+        todo_list = [dict(todo) for todo in todos]
+        return jsonify({"code": 200, "msg": "获取成功", "data": todo_list})
     except Exception as e:
-        # 打印错误日志（Render 可查看）
-        app.logger.error(f"测试接口异常: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({
-            "code": 500,
-            "msg": f"接口调用失败: {str(e)}",
-            "data": None
-        }), 500
+        return jsonify({"code": 500, "msg": f"获取失败：{str(e)}", "data": None}), 500
 
-@app.route('/api/users', methods=['GET'])
-def get_users():
-    """示例业务接口：获取所有用户"""
+
+# 新增待办
+@app.route('/api/todos', methods=['POST'])
+def add_todo():
     try:
-        conn = get_db_connection()
-        users = conn.execute('SELECT * FROM users').fetchall()
-        conn.close()
-
-        # 转换为列表字典（方便前端解析）
-        user_list = [dict(user) for user in users]
-        return jsonify({
-            "code": 200,
-            "msg": "获取用户列表成功",
-            "data": user_list
-        })
-    except Exception as e:
-        app.logger.error(f"获取用户异常: {str(e)}")
-        return jsonify({
-            "code": 500,
-            "msg": f"获取用户失败: {str(e)}",
-            "data": None
-        }), 500
-
-@app.route('/api/users', methods=['POST'])
-def add_user():
-    """示例业务接口：添加用户"""
-    try:
-        # 获取前端传参
         data = request.get_json()
-        if not data or not data.get('name'):
-            return jsonify({
-                "code": 400,
-                "msg": "参数错误：name 不能为空",
-                "data": None
-            }), 400
+        if not data or not data.get('title'):
+            return jsonify({"code": 400, "msg": "标题不能为空", "data": None}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO users (name, email) VALUES (?, ?)',
-            (data.get('name'), data.get('email', ''))
-        )
+        cursor.execute('INSERT INTO todos (title) VALUES (?)', (data['title'],))
         conn.commit()
         conn.close()
-
-        return jsonify({
-            "code": 201,
-            "msg": "用户添加成功",
-            "data": {
-                "name": data.get('name'),
-                "email": data.get('email', '')
-            }
-        }), 201
-    except sqlite3.IntegrityError:
-        return jsonify({
-            "code": 409,
-            "msg": "邮箱已存在",
-            "data": None
-        }), 409
+        return jsonify({"code": 200, "msg": "添加成功", "data": None})
     except Exception as e:
-        app.logger.error(f"添加用户异常: {str(e)}")
-        return jsonify({
-            "code": 500,
-            "msg": f"添加用户失败: {str(e)}",
-            "data": None
-        }), 500
+        return jsonify({"code": 500, "msg": f"添加失败：{str(e)}", "data": None}), 500
 
-# ===================== 启动配置 =====================
+
+# 切换待办状态
+@app.route('/api/todos/<int:todo_id>/toggle', methods=['PUT'])
+def toggle_todo(todo_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE todos SET completed = NOT completed WHERE id = ?', (todo_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"code": 200, "msg": "状态更新成功", "data": None})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"状态更新失败：{str(e)}", "data": None}), 500
+
+
+# 删除待办
+@app.route('/api/todos/<int:todo_id>', methods=['DELETE'])
+def delete_todo(todo_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM todos WHERE id = ?', (todo_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"code": 200, "msg": "删除成功", "data": None})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"删除失败：{str(e)}", "data": None}), 500
+
+
+# 编辑待办
+@app.route('/api/todos/<int:todo_id>/edit', methods=['PUT'])
+def edit_todo(todo_id):
+    try:
+        data = request.get_json()
+        if not data or not data.get('title'):
+            return jsonify({"code": 400, "msg": "标题不能为空", "data": None}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE todos SET title = ? WHERE id = ?', (data['title'], todo_id))
+        conn.commit()
+        conn.close()
+        return jsonify({"code": 200, "msg": "编辑成功", "data": None})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"编辑失败：{str(e)}", "data": None}), 500
+
+
+# ========== 5. 启动配置（适配 Render 端口规则） ==========
 if __name__ == '__main__':
-    # 从环境变量读取端口（Render 自动分配），默认 5000
     port = int(os.environ.get('PORT', 5000))
-    # 生产环境关闭 debug，绑定 0.0.0.0 允许外部访问
     app.run(host='0.0.0.0', port=port, debug=False)
