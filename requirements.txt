@@ -1,0 +1,4 @@
+flask==2.3.3          # Flask 核心框架
+flask-cors==4.0.0     # 解决前后端跨域
+gunicorn==21.2.0      # 生产环境运行 Flask
+python-dotenv==1.0.0  # 环境变量管理（可选，建议加）
