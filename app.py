@@ -9,6 +9,7 @@ app = Flask(__name__)
 
 # ========== 1. 跨域配置（适配 Render + 前端 Vercel） ==========
 CORS(app, resources={r"/*": {"origins": "*"}})
+app.config['CORS_HEADERS'] = 'Content-Type'
 
 # ========== 2. SQLite 路径适配（Render 核心！仅 /tmp 目录可写） ==========
 if 'RENDER' in os.environ:
